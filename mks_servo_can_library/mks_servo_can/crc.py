@@ -31,11 +31,7 @@ def calculate_crc(can_id: int, data_bytes: list[int]) -> int:
     if not all(0 <= b <= 0xFF for b in data_bytes):
         raise ParameterError("All data bytes must be in range 0-255.")
 
-    checksum = can_id
-    for byte_val in data_bytes:
-        checksum += byte_val
-
-    return checksum & 0xFF
+    return (can_id + sum(data_bytes)) & 0xFF
 
 
 def verify_crc(can_id: int, received_bytes: list[int]) -> bool:
