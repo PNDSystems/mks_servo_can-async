@@ -54,11 +54,10 @@ except FileNotFoundError:
 
 
 setup(
-    name="mks-servo-can",
+    name="mks-servo-can-async",
     version=get_version_from_init(),  # Use the new function to get version
     author="Ricardo de Azambuja",  # Please update this
-    description="Python library to control MKS SERVO42D/57D motors "
-    "via CAN bus.",
+    description="Python library to control MKS SERVO42D/57D motors via CAN bus (async version).",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/ricardodeazambuja/mks_servo_can",
