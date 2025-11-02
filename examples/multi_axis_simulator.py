@@ -1,101 +1,100 @@
 # This script demonstrates how to control multiple MKS Servo motors simultaneously
-# using the mks-servo-simulator. It showcases the MultiAxisController for coordinated actions.
+# using real CAN hardware. It showcases the MultiAxisController for coordinated actions.
 
 """
-Example: Controlling multiple MKS Servo motors using the Simulator.
-Make sure the simulator is running before executing this script.
-(e.g., `mks-servo-simulator --num-motors 2 --start-can-id 1`)
+Example: Controlling multiple MKS Servo motors using real CAN hardware.
+Make sure your CAN interface is properly configured (e.g., can0 at 1 Mbps).
+Motors should have CAN IDs 0x01 and 0x02.
 """
 # This is a module-level docstring explaining the purpose of the script.
-# It emphasizes that this example uses the simulator and requires it to be running
-# with a specific configuration (at least two motors).
+# It emphasizes that this example uses real CAN hardware with two motors.
 
 import asyncio
+
 # Imports the 'asyncio' library, essential for using the asynchronous features
 # of the 'mks_servo_can' library.
-
 import logging
+
 # Imports the 'logging' module to provide informative output during script execution.
-
-from mks_servo_can import Axis
 # Imports the 'Axis' class, used to represent and control individual motors.
-
-from mks_servo_can import CANInterface
 # Imports the 'CANInterface' class, used to establish a connection (in this case, to the simulator).
-
-from mks_servo_can import const
 # Imports the 'const' module for library-defined constants (e.g., default encoder pulses).
-
-from mks_servo_can import exceptions
 # Imports the 'exceptions' module for handling library-specific errors.
-
-from mks_servo_can import MultiAxisController
 # Imports the 'MultiAxisController' class, which is key for managing and
 # sending commands to multiple axes in a coordinated manner.
+from mks_servo_can import (
+    Axis,
+    CANInterface,
+    MultiAxisController,
+    RotaryKinematics,
+    const,
+    exceptions,
+)
 
-from mks_servo_can import RotaryKinematics
 # Imports 'RotaryKinematics' as an example kinematics model for the motors.
 # This defines the relationship between motor steps and user units (e.g., degrees).
 
 # Configure logging
 # Sets up basic logging for the script.
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 # Configures the root logger to show INFO level messages and above,
 # with a specific format including timestamp, level, and message.
 
 logger = logging.getLogger(__name__)
 # Creates a logger instance for this specific module.
 
-SIMULATOR_HOST = "localhost"
-# Defines the hostname where the simulator is expected to be running.
-# "localhost" indicates the same machine.
+# CAN Hardware Configuration
+CAN_INTERFACE = "socketcan"
+# The CAN interface type (socketcan for Linux SocketCAN).
 
-SIMULATOR_PORT = 6789  # Default simulator port
-# Defines the TCP port number the simulator listens on.
-# This must match the port the simulator was started with.
+CAN_CHANNEL = "can0"
+# The CAN channel/device to use (e.g., can0).
 
-# Define CAN IDs for simulated motors (must match simulator setup)
-# These constants define the CAN IDs that will be used for the simulated motors.
-# The simulator must be configured to simulate motors with these IDs.
-MOTOR_CAN_ID_1 = 1
-MOTOR_CAN_ID_2 = 2
+CAN_BITRATE = 1000000
+# CAN bus bitrate in bps (1 Mbps).
+
+# Define CAN IDs for the motors
+# These constants define the CAN IDs for the two motors.
+MOTOR_CAN_ID_1 = 0x01
+MOTOR_CAN_ID_2 = 0x02
+
 
 async def setup_and_connect_can_interface() -> CANInterface:
-    # Defines an asynchronous function to set up and connect the CANInterface to the simulator.
+    # Defines an asynchronous function to set up and connect the CANInterface to real hardware.
     # It returns the connected CANInterface instance.
-    """Sets up and connects the CAN interface to the simulator."""
+    """Sets up and connects the CAN interface to real hardware."""
     # Docstring for the function.
-    logger.info("Setting up CAN interface for simulator...")
+    logger.info(f"Setting up CAN interface for {CAN_CHANNEL} @ {CAN_BITRATE} bps...")
     # Logs the setup attempt.
-    can_if_sim = CANInterface(
-        use_simulator=True, # Explicitly tells CANInterface to use the simulator.
-        simulator_host=SIMULATOR_HOST, # Specifies the simulator's hostname.
-        simulator_port=SIMULATOR_PORT, # Specifies the simulator's port.
+    can_if = CANInterface(
+        use_simulator=False,  # Use real CAN hardware, not simulator.
+        interface_type=CAN_INTERFACE,  # Specifies the interface type (socketcan).
+        channel=CAN_CHANNEL,  # Specifies the CAN channel (can0).
+        bitrate=CAN_BITRATE,  # Specifies the CAN bitrate (1 Mbps).
     )
-    # Creates a CANInterface instance configured for the simulator.
+    # Creates a CANInterface instance configured for real CAN hardware.
     try:
         # This 'try' block attempts the connection.
-        await can_if_sim.connect()
-        # Asynchronously connects to the simulator.
-        logger.info("Connected to Simulator successfully.")
+        await can_if.connect()
+        # Asynchronously connects to the CAN interface.
+        logger.info("Connected to CAN interface successfully.")
         # Logs successful connection.
-        return can_if_sim
+        return can_if
         # Returns the connected interface.
-    except exceptions.SimulatorError as e:
-        # Catches 'SimulatorError' if the connection to the simulator fails.
-        logger.error("Failed to connect to simulator: %s", e)
+    except Exception as e:
+        # Catches any exception if the connection fails.
+        logger.error("Failed to connect to CAN interface: %s", e)
         # Logs the error.
         logger.error(
-            "Please ensure the simulator is running at %s:%s "
-            "with at least %d motors configured (e.g., --num-motors 2).",
-            SIMULATOR_HOST,
-            SIMULATOR_PORT,
-            MOTOR_CAN_ID_2, # Ensures the message reminds about simulating enough motors.
+            "Please ensure your CAN interface %s is properly configured "
+            "and that motors with IDs 0x%02X and 0x%02X are connected.",
+            CAN_CHANNEL,
+            MOTOR_CAN_ID_1,
+            MOTOR_CAN_ID_2,
         )
-        # Provides troubleshooting advice, emphasizing simulator configuration.
-        raise # Re-raises the caught exception to halt execution if connection fails.
+        # Provides troubleshooting advice.
+        raise  # Re-raises the caught exception to halt execution if connection fails.
+
 
 def create_axes_and_controller(
     can_if: CANInterface,
@@ -115,21 +114,21 @@ def create_axes_and_controller(
     # This means both axes will be controlled in terms of degrees by default.
 
     axis1 = Axis(
-        can_if, # The shared, connected CANInterface.
-        MOTOR_CAN_ID_1, # CAN ID for the first motor.
-        "SimMotor1", # Name for the first axis.
-        kinematics=kin, # Assigns the rotary kinematics.
-        default_speed_param=1000, # Sets a default MKS speed parameter for this axis.
-        default_accel_param=150, # Sets a default MKS acceleration parameter.
+        can_if,  # The shared, connected CANInterface.
+        MOTOR_CAN_ID_1,  # CAN ID for the first motor.
+        "SimMotor1",  # Name for the first axis.
+        kinematics=kin,  # Assigns the rotary kinematics.
+        default_speed_param=1000,  # Sets a default MKS speed parameter for this axis.
+        default_accel_param=150,  # Sets a default MKS acceleration parameter.
     )
     # Creates the first Axis instance.
     axis2 = Axis(
-        can_if, # Shared CANInterface.
-        MOTOR_CAN_ID_2, # CAN ID for the second motor.
-        "SimMotor2", # Name for the second axis.
-        kinematics=kin, # Also uses rotary kinematics.
-        default_speed_param=800, # Different default speed for variety.
-        default_accel_param=100, # Different default acceleration.
+        can_if,  # Shared CANInterface.
+        MOTOR_CAN_ID_2,  # CAN ID for the second motor.
+        "SimMotor2",  # Name for the second axis.
+        kinematics=kin,  # Also uses rotary kinematics.
+        default_speed_param=800,  # Different default speed for variety.
+        default_accel_param=100,  # Different default acceleration.
     )
     # Creates the second Axis instance.
 
@@ -144,6 +143,7 @@ def create_axes_and_controller(
     return multi_controller
     # Returns the configured controller.
 
+
 async def perform_motor_operations(multi_controller: MultiAxisController):
     # Defines an asynchronous function to perform a sequence of operations on the motors
     # managed by the MultiAxisController.
@@ -151,9 +151,7 @@ async def perform_motor_operations(multi_controller: MultiAxisController):
     # Docstring for the function.
     logger.info("Initializing all simulated axes...")
     # Logs the start of axis initialization.
-    await multi_controller.initialize_all_axes(
-        calibrate=False, home=False, concurrent=True
-    )
+    await multi_controller.initialize_all_axes(calibrate=False, home=False, concurrent=True)
     # Initializes all axes managed by the controller.
     # 'calibrate=False' and 'home=False' skip these steps for this example.
     # 'concurrent=True' means initialization commands are sent to all axes concurrently.
@@ -170,11 +168,11 @@ async def perform_motor_operations(multi_controller: MultiAxisController):
 
     target_positions = {
         "SimMotor1": 90.0,  # Target 90 degrees for SimMotor1.
-        "SimMotor2": -45.0, # Target -45 degrees for SimMotor2.
+        "SimMotor2": -45.0,  # Target -45 degrees for SimMotor2.
     }
     # Defines a dictionary of target absolute positions for each axis by name.
     target_speeds = {
-        "SimMotor1": 180.0, # Speed for SimMotor1: 180 degrees/second.
+        "SimMotor1": 180.0,  # Speed for SimMotor1: 180 degrees/second.
         "SimMotor2": 90.0,  # Speed for SimMotor2: 90 degrees/second.
     }
     # Defines a dictionary of target speeds for each axis.
@@ -210,12 +208,10 @@ async def perform_motor_operations(multi_controller: MultiAxisController):
                 final_positions[name],
             )
             # Logs the target vs. actual position for the axis.
-            assert (
-                abs(final_positions[name] - target) < 1.0
-            ), f"Axis {name} did not reach target."
+            assert abs(final_positions[name] - target) < 1.0, f"Axis {name} did not reach target."
             # Asserts that the actual position is close to the target (tolerance of 1.0 degree).
 
-    await asyncio.sleep(1) # Pauses for 1 second.
+    await asyncio.sleep(1)  # Pauses for 1 second.
 
     relative_distances = {"SimMotor1": -30.0, "SimMotor2": 15.0}
     # Defines relative distances for another multi-axis move.
@@ -223,9 +219,7 @@ async def perform_motor_operations(multi_controller: MultiAxisController):
     # SimMotor2 will move +15 degrees from its current position.
     logger.info("Moving all axes relatively by: %s", relative_distances)
     # Logs the relative move command.
-    await multi_controller.move_all_relative_user(
-        relative_distances, wait_for_all=True
-    )
+    await multi_controller.move_all_relative_user(relative_distances, wait_for_all=True)
     # Commands all axes to perform relative moves.
     # 'wait_for_all=True' ensures the call blocks until completion.
 
@@ -242,13 +236,14 @@ async def perform_motor_operations(multi_controller: MultiAxisController):
     logger.info("Motor operations finished successfully.")
     # Logs the successful completion of all demonstrated operations.
 
+
 async def main():
     # Defines the main asynchronous function that orchestrates the example.
     """Main execution function for the multi-axis simulator example."""
     # Docstring for the main function.
     logger.info("Starting multi-axis simulator example...")
     # Logs the start of the overall example.
-    can_if_sim = None # Initialize to None for the finally block.
+    can_if_sim = None  # Initialize to None for the finally block.
     try:
         # This 'try' block encompasses the main setup and operations.
         can_if_sim = await setup_and_connect_can_interface()
@@ -264,13 +259,13 @@ async def main():
         # Specifically catches SimulatorError if setup_and_connect_can_interface fails.
         logger.info("Exiting due to simulator connection failure.")
         # Logs the reason for exiting.
-    except exceptions.MultiAxisError as e: # Catch MultiAxisError specifically
+    except exceptions.MultiAxisError as e:  # Catch MultiAxisError specifically
         # Catches errors specific to MultiAxisController operations (e.g., if one axis fails in a group command).
         logger.error("A Multi-Axis MKS Servo library error occurred: %s", e)
         # The E1101 (no-member) Pylint error on 'e.individual_errors' might occur if Pylint
         # cannot infer the type of 'e' precisely enough within the exception handler.
         # However, 'MultiAxisError' is defined to have 'individual_errors'.
-        if e.individual_errors: # pylint: disable=no-member
+        if e.individual_errors:  # pylint: disable=no-member
             # If the error contains details about individual axis failures, log them.
             for axis_name, err in e.individual_errors.items():
                 logger.error("  Error for axis '%s': %s", axis_name, err)
@@ -283,7 +278,7 @@ async def main():
         # 'exc_info=True' includes traceback information in the log.
     finally:
         # The 'finally' block ensures cleanup (disconnecting CAN interface) always occurs.
-        if can_if_sim: # Checks if the CAN interface was successfully created.
+        if can_if_sim:  # Checks if the CAN interface was successfully created.
             logger.info("Disconnecting from Simulator...")
             # Logs the disconnection attempt.
             await can_if_sim.disconnect()
@@ -291,9 +286,9 @@ async def main():
         logger.info("Program terminated.")
         # Logs the end of the program.
 
+
 if __name__ == "__main__":
     # This standard Python construct ensures that 'asyncio.run(main())' is called
     # only when the script is executed directly (not when imported as a module).
     asyncio.run(main())
     # Runs the main asynchronous function, starting the asyncio event loop.
-    
